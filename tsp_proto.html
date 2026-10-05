@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TSP Widget Prototype</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d1d1b;--muted:#6b6b66;--card:#fff;--line:#d8d8d0;--accent:#2a6fdb;--city:#1d1d1b;--ok:#1f9d55;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--fg:#ececE6;--muted:#9a9a92;--card:#1e1e1c;--line:#3a3a36;--accent:#6aa5ff;--city:#ececE6;--ok:#4cc27f}}
+:root[data-theme="dark"]{--bg:#141413;--fg:#ececE6;--muted:#9a9a92;--card:#1e1e1c;--line:#3a3a36;--accent:#6aa5ff;--city:#ececE6;--ok:#4cc27f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px}
+h1{font-size:1.3rem;margin:0 0 4px}
+p{margin:0 0 12px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+svg{width:100%;height:auto;display:block;touch-action:manipulation;background:var(--bg);border-radius:8px}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+.stat{flex:1 1 120px}
+.stat b{display:block;font-size:1.6rem;font-variant-numeric:tabular-nums}
+.stat span{font-size:.8rem;color:var(--muted)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--accent)}
+label{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:.9rem}
+.edge{stroke:var(--accent);stroke-width:2.5;stroke-linecap:round}
+.edge.done{stroke:var(--ok)}
+.city{fill:var(--city);stroke:var(--bg);stroke-width:2;cursor:pointer}
+.city.in{fill:var(--accent)}
+.city.start{fill:var(--ok)}
+.hit{fill:transparent;cursor:pointer}
+text{font:600 11px system-ui,sans-serif;fill:var(--bg);pointer-events:none;text-anchor:middle;dominant-baseline:central}
+</style>
+</head>
+<body>
+<main>
+<h1>Draw a tour</h1>
+<p>Click cities one after another to connect them. Visit every city, then click the green start city to close the loop. Can you beat your own score?</p>
+<div class="card">
+<svg id="map" viewBox="0 0 600 400" role="img" aria-label="Map of cities"></svg>
+<div class="stats">
+<div class="stat"><b id="len">0</b><span id="lenLabel">path length</span></div>
+<div class="stat"><b id="vis">0 / 0</b><span>cities visited</span></div>
+<div class="stat"><b id="best">–</b><span>best closed tour</span></div>
+</div>
+<div class="controls">
+<button id="undo">Undo</button>
+<button id="clear">Clear tour</button>
+<button id="fresh">New cities</button>
+<label>Cities <input type="range" id="n" min="4" max="30" value="10"><span id="nv">10</span></label>
+</div>
+</div>
+</main>
+<script>
+const W=600,H=400,PAD=30,NS="http://www.w3.org/2000/svg";
+const svg=document.getElementById("map");
+let cities=[],tour=[],closed=false,best=null;
+const $=id=>document.getElementById(id);
+const d=(a,b)=>Math.hypot(cities[a].x-cities[b].x,cities[a].y-cities[b].y);
+
+function newCities(){
+  const n=+$("n").value;cities=[];
+  while(cities.length<n){
+    const c={x:PAD+Math.random()*(W-2*PAD),y:PAD+Math.random()*(H-2*PAD)};
+    // keep cities from overlapping
+    if(cities.every(o=>Math.hypot(o.x-c.x,o.y-c.y)>34))cities.push(c);
+  }
+  best=null;tour=[];closed=false;render();
+}
+function length(){
+  let L=0;
+  for(let i=1;i<tour.length;i++)L+=d(tour[i-1],tour[i]);
+  if(closed)L+=d(tour[tour.length-1],tour[0]);
+  return L;
+}
+function line(a,b,cls){
+  const l=document.createElementNS(NS,"line");
+  l.setAttribute("x1",cities[a].x);l.setAttribute("y1",cities[a].y);
+  l.setAttribute("x2",cities[b].x);l.setAttribute("y2",cities[b].y);
+  l.setAttribute("class",cls);svg.appendChild(l);
+}
+function click(i){
+  if(closed)return;
+  if(!tour.includes(i)){tour.push(i)}
+  else if(i===tour[0]&&tour.length===cities.length){
+    closed=true;
+    const L=length();
+    if(best===null||L<best)best=L;
+  }
+  render();
+}
+function render(){
+  svg.innerHTML="";
+  for(let i=1;i<tour.length;i++)line(tour[i-1],tour[i],"edge"+(closed?" done":""));
+  if(closed)line(tour[tour.length-1],tour[0],"edge done");
+  cities.forEach((c,i)=>{
+    const g=document.createElementNS(NS,"g");
+    const hit=document.createElementNS(NS,"circle");
+    hit.setAttribute("cx",c.x);hit.setAttribute("cy",c.y);hit.setAttribute("r",20);hit.setAttribute("class","hit");
+    const dot=document.createElementNS(NS,"circle");
+    dot.setAttribute("cx",c.x);dot.setAttribute("cy",c.y);dot.setAttribute("r",11);
+    const idx=tour.indexOf(i);
+    dot.setAttribute("class","city"+(idx===0?" start":idx>0?" in":""));
+    g.append(dot,hit);
+    if(idx>=0){
+      const t=document.createElementNS(NS,"text");
+      t.setAttribute("x",c.x);t.setAttribute("y",c.y);t.textContent=idx+1;g.appendChild(t);
+    }
+    g.addEventListener("pointerdown",e=>{e.preventDefault();click(i)});
+    svg.appendChild(g);
+  });
+  $("len").textContent=Math.round(length());
+  $("lenLabel").textContent=closed?"closed tour length":"path length so far";
+  $("vis").textContent=tour.length+" / "+cities.length;
+  $("best").textContent=best===null?"–":Math.round(best);
+  $("nv").textContent=$("n").value;
+}
+$("undo").onclick=()=>{if(closed)closed=false;else tour.pop();render()};
+$("clear").onclick=()=>{tour=[];closed=false;render()};
+$("fresh").onclick=newCities;
+$("n").oninput=newCities;
+newCities();
+</script>
+</body>
+</html>
